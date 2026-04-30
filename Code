@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Unlockd</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:root {
+–accent: #2D6A4F;
+–accent2: #52B788;
+–dark: #0d1b13;
+–card-bg: #ffffff;
+–text: #1a1a1a;
+–muted: #888;
+}
+
+body {
+background: #1a1a2e;
+display: flex;
+justify-content: center;
+align-items: center;
+min-height: 100vh;
+font-family: ‘DM Sans’, sans-serif;
+}
+
+/* ── Phone Shell ── */
+#phone {
+width: 390px;
+height: 844px;
+background: #fff;
+border-radius: 50px;
+box-shadow: 0 0 0 10px #111, 0 0 0 13px #333, 0 40px 80px rgba(0,0,0,0.6);
+overflow: hidden;
+position: relative;
+display: flex;
+flex-direction: column;
+}
+
+/* ── Status Bar ── */
+#statusbar {
+background: transparent;
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 14px 28px 6px;
+position: absolute;
+top: 0; left: 0; right: 0;
+z-index: 999;
+pointer-events: none;
+}
+#statusbar span { font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.notch {
+width: 110px; height: 20px;
+background: #111;
+border-radius: 20px;
+}
+
+/* ══════════════════════════════════
+SCREEN: INTRO (Weltkugel)
+══════════════════════════════════ */
+#screen-intro {
+position: absolute; inset: 0;
+background: #000008;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+z-index: 100;
+transition: opacity 0.8s ease, transform 0.8s ease;
+}
+#screen-intro.hidden {
+opacity: 0;
+transform: scale(1.05);
+pointer-events: none;
+}
+
+/* Stars background */
+#stars-canvas {
+position: absolute; inset: 0;
+width: 100%; height: 100%;
+pointer-events: none;
+z-index: 0;
+}
+
+/* Three.js Globe */
+.globe-wrap {
+position: relative;
+width: 260px;
+height: 260px;
+margin-bottom: 28px;
+z-index: 1;
+}
+#globe-canvas {
+width: 260px !important;
+height: 260px !important;
+border-radius: 50%;
+}
+/* Atmosphere glow ring */
+.atmo-glow {
+position: absolute;
+inset: -18px;
+border-radius: 50%;
+background: radial-gradient(circle,
+transparent 38%,
+rgba(80,160,255,0.08) 52%,
+rgba(80,160,255,0.22) 62%,
+rgba(100,180,255,0.32) 70%,
+rgba(120,200,255,0.18) 80%,
+transparent 92%
+);
+pointer-events: none;
+animation: atmoPulse 4s ease-in-out infinite;
+}
+@keyframes atmoPulse {
+0%,100% { opacity: 0.85; }
+50%      { opacity: 1; }
+}
+/* Specular highlight overlay */
+.globe-shine {
+position: absolute;
+top: 14px; left: 22px;
+width: 80px; height: 80px;
+border-radius: 50%;
+background: radial-gradient(circle at 35% 35%,
+rgba(255,255,255,0.18) 0%,
+rgba(255,255,255,0.05) 50%,
+transparent 70%
+);
+pointer-events: none;
+z-index: 2;
+}
+
+@keyframes pulse {
+0%,100% { transform: scale(1); opacity: 0.7; }
+50%      { transform: scale(1.08); opacity: 1; }
+}
+
+.intro-logo {
+font-family: ‘Syne’, sans-serif;
+font-size: 38px;
+font-weight: 800;
+color: #fff;
+letter-spacing: -1px;
+margin-bottom: 8px;
+}
+.intro-tagline {
+font-size: 14px;
+color: rgba(255,255,255,0.55);
+margin-bottom: 48px;
+letter-spacing: 0.3px;
+}
+
+#btn-locate {
+display: flex;
+align-items: center;
+gap: 10px;
+background: #52B788;
+color: #fff;
+border: none;
+border-radius: 50px;
+padding: 16px 32px;
+font-family: ‘DM Sans’, sans-serif;
+font-size: 15px;
+font-weight: 600;
+cursor: pointer;
+box-shadow: 0 8px 32px rgba(82,183,136,0.45);
+transition: transform 0.15s, box-shadow 0.15s;
+letter-spacing: 0.2px;
+}
+#btn-locate:active { transform: scale(0.96); box-shadow: 0 4px 16px rgba(82,183,136,0.3); }
+#btn-locate svg { flex-shrink: 0; }
+
+.locating-dots span {
+display: inline-block;
+animation: blink 1.2s infinite;
+font-size: 20px;
+}
+.locating-dots span:nth-child(2) { animation-delay: 0.2s; }
+.locating-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+
+/* ══════════════════════════════════
+SCREEN: MAP
+══════════════════════════════════ */
+#screen-map {
+position: absolute; inset: 0;
+display: flex;
+flex-direction: column;
+opacity: 0;
+pointer-events: none;
+transition: opacity 0.6s ease;
+}
+#screen-map.visible {
+opacity: 1;
+pointer-events: all;
+}
+
+#map {
+flex: 1;
+z-index: 1;
+}
+
+/* Header overlay on map */
+#map-header {
+position: absolute;
+top: 0; left: 0; right: 0;
+padding: 44px 16px 12px;
+background: linear-gradient(to bottom, rgba(255,255,255,0.97) 60%, transparent);
+z-index: 500;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+.map-logo {
+font-family: ‘Syne’, sans-serif;
+font-size: 22px;
+font-weight: 800;
+color: var(–dark);
+letter-spacing: -0.5px;
+}
+.map-logo span { color: var(–accent); }
+.avatar-btn {
+width: 38px; height: 38px;
+border-radius: 50%;
+background: linear-gradient(135deg, #2D6A4F, #52B788);
+color: #fff;
+font-size: 13px;
+font-weight: 700;
+display: flex; align-items: center; justify-content: center;
+border: none; cursor: pointer;
+box-shadow: 0 2px 12px rgba(45,106,79,0.35);
+}
+
+/* Filter chips */
+#filters {
+position: absolute;
+top: 96px; left: 0; right: 0;
+display: flex;
+gap: 6px;
+padding: 0 12px;
+overflow-x: auto;
+z-index: 500;
+scrollbar-width: none;
+}
+#filters::-webkit-scrollbar { display: none; }
+.chip {
+background: #fff;
+border: 1.5px solid #e8e8e8;
+border-radius: 20px;
+padding: 5px 13px;
+font-size: 12px;
+font-weight: 600;
+white-space: nowrap;
+cursor: pointer;
+box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+transition: all 0.15s;
+font-family: ‘DM Sans’, sans-serif;
+}
+.chip.active {
+background: var(–accent);
+color: #fff;
+border-color: var(–accent);
+}
+
+/* FAB */
+#fab {
+position: absolute;
+bottom: 96px;
+right: 16px;
+z-index: 500;
+width: 56px; height: 56px;
+border-radius: 50%;
+background: var(–accent);
+color: #fff;
+font-size: 28px;
+border: none;
+cursor: pointer;
+box-shadow: 0 6px 24px rgba(45,106,79,0.5);
+display: flex; align-items: center; justify-content: center;
+transition: transform 0.15s;
+}
+#fab:active { transform: scale(0.93); }
+
+/* My location button */
+#btn-myloc {
+position: absolute;
+bottom: 164px;
+right: 16px;
+z-index: 500;
+width: 44px; height: 44px;
+border-radius: 50%;
+background: #fff;
+border: none;
+cursor: pointer;
+box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+display: flex; align-items: center; justify-content: center;
+font-size: 18px;
+transition: transform 0.15s;
+}
+#btn-myloc:active { transform: scale(0.93); }
+
+/* ── Bottom Nav ── */
+#bottomnav {
+position: absolute;
+bottom: 0; left: 0; right: 0;
+background: #fff;
+border-top: 1px solid #f0f0f0;
+display: flex;
+z-index: 500;
+padding-bottom: 12px;
+}
+.nav-btn {
+flex: 1;
+background: none;
+border: none;
+cursor: pointer;
+padding: 10px 0 4px;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 3px;
+font-family: ‘DM Sans’, sans-serif;
+}
+.nav-btn .nav-icon { font-size: 22px; }
+.nav-btn .nav-label {
+font-size: 10px;
+font-weight: 600;
+color: #bbb;
+letter-spacing: 0.4px;
+text-transform: uppercase;
+}
+.nav-btn.active .nav-label { color: var(–accent); }
+.nav-btn .nav-dot {
+width: 4px; height: 4px;
+border-radius: 50%;
+background: var(–accent);
+opacity: 0;
+transition: opacity 0.2s;
+}
+.nav-btn.active .nav-dot { opacity: 1; }
+
+/* ══════════════════════════════════
+SPOT CARD (bottom sheet)
+══════════════════════════════════ */
+#spot-card {
+position: absolute;
+bottom: 80px; left: 12px; right: 12px;
+background: #fff;
+border-radius: 22px;
+box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+overflow: hidden;
+z-index: 600;
+transform: translateY(120%);
+transition: transform 0.35s cubic-bezier(.34,1.4,.64,1);
+}
+#spot-card.open { transform: translateY(0); }
+#spot-card img { width: 100%; height: 140px; object-fit: cover; }
+.card-body { padding: 14px 16px 16px; }
+.card-cat { font-size: 11px; color: var(–muted); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.card-name { font-family: ‘Syne’, sans-serif; font-size: 18px; font-weight: 700; color: var(–text); margin-top: 2px; }
+.card-author { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.mini-avatar {
+width: 26px; height: 26px; border-radius: 50%;
+display: flex; align-items: center; justify-content: center;
+font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.card-note { font-size: 13px; color: #555; margin-top: 8px; font-style: italic; line-height: 1.55; }
+.card-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+.like-btn {
+background: #f5f5f5; border: 1.5px solid #eee;
+border-radius: 20px; padding: 6px 16px;
+font-size: 13px; font-weight: 600;
+cursor: pointer; display: flex; align-items: center; gap: 5px;
+font-family: ‘DM Sans’, sans-serif; transition: all 0.2s;
+}
+.like-btn.liked { background: #fff0f0; border-color: #ff6b6b; color: #ff6b6b; }
+.privacy-badge {
+font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 600;
+}
+.close-card {
+position: absolute; top: 10px; right: 10px;
+background: rgba(0,0,0,0.35); border: none;
+border-radius: 50%; width: 28px; height: 28px;
+color: #fff; font-size: 13px; cursor: pointer;
+display: flex; align-items: center; justify-content: center;
+}
+
+/* ══════════════════════════════════
+SCREEN: FRIENDS
+══════════════════════════════════ */
+#screen-friends {
+position: absolute; inset: 0;
+background: #fafafa;
+display: none;
+flex-direction: column;
+z-index: 10;
+}
+#screen-friends.visible { display: flex; }
+.friends-header {
+padding: 52px 20px 16px;
+background: #fff;
+border-bottom: 1px solid #f0f0f0;
+}
+.friends-title { font-family: ‘Syne’, sans-serif; font-size: 24px; font-weight: 800; color: var(–text); }
+.friends-sub { font-size: 13px; color: var(–muted); margin-top: 3px; }
+.search-box {
+width: 100%; margin-top: 14px;
+padding: 11px 14px;
+border-radius: 12px; border: 1.5px solid #e8e8e8;
+font-size: 14px; font-family: ‘DM Sans’, sans-serif;
+background: #f7f7f7; outline: none;
+}
+.friends-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+.friend-row {
+display: flex; align-items: center; gap: 14px;
+padding: 14px 20px;
+background: #fff; border-bottom: 1px solid #f5f5f5;
+}
+.friend-avatar {
+width: 48px; height: 48px; border-radius: 50%;
+display: flex; align-items: center; justify-content: center;
+font-size: 15px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.friend-info { flex: 1; }
+.friend-name { font-weight: 600; font-size: 15px; color: var(–text); }
+.friend-meta { font-size: 12px; color: var(–muted); margin-top: 2px; }
+.friend-action {
+padding: 6px 14px; border-radius: 20px;
+border: 1.5px solid var(–accent); background: #fff;
+color: var(–accent); font-size: 12px; font-weight: 700;
+cursor: pointer; font-family: ‘DM Sans’, sans-serif;
+}
+.invite-card {
+margin: 16px 20px;
+padding: 18px;
+background: #f0faf4;
+border-radius: 16px;
+border: 1.5px dashed rgba(45,106,79,0.3);
+text-align: center; cursor: pointer;
+}
+.invite-card .invite-icon { font-size: 26px; margin-bottom: 6px; }
+.invite-card .invite-title { font-weight: 700; color: var(–accent); font-size: 14px; }
+.invite-card .invite-sub { font-size: 12px; color: var(–muted); margin-top: 3px; }
+
+/* ══════════════════════════════════
+ADD SPOT MODAL
+══════════════════════════════════ */
+#modal-overlay {
+position: absolute; inset: 0;
+background: rgba(0,0,0,0.5);
+z-index: 800;
+display: none;
+align-items: flex-end;
+}
+#modal-overlay.open { display: flex; }
+#modal-sheet {
+background: #fff;
+border-radius: 24px 24px 0 0;
+width: 100%;
+padding: 24px 20px 32px;
+transform: translateY(100%);
+transition: transform 0.4s cubic-bezier(.34,1.3,.64,1);
+}
+#modal-overlay.open #modal-sheet { transform: translateY(0); }
+.modal-title { font-family: ‘Syne’, sans-serif; font-size: 20px; font-weight: 800; color: var(–text); }
+.modal-close {
+background: #f0f0f0; border: none; border-radius: 50%;
+width: 32px; height: 32px; cursor: pointer; font-size: 14px;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+.step-dots { display: flex; gap: 5px; }
+.step-dot { width: 6px; height: 6px; border-radius: 50%; background: #e0e0e0; transition: background 0.2s; }
+.step-dot.active { background: var(–accent); width: 18px; border-radius: 3px; }
+label.field-label {
+display: block;
+font-size: 11px; font-weight: 700;
+color: var(–muted); text-transform: uppercase;
+letter-spacing: 0.8px; margin-bottom: 7px;
+}
+.field-input {
+width: 100%; padding: 12px 14px;
+border-radius: 12px; border: 1.5px solid #e8e8e8;
+font-size: 14px; font-family: ‘DM Sans’, sans-serif;
+outline: none; margin-bottom: 18px;
+transition: border-color 0.2s;
+}
+.field-input:focus { border-color: var(–accent); }
+.cats-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 20px; }
+.cat-chip {
+padding: 7px 13px; border-radius: 20px;
+border: 1.5px solid #e0e0e0; background: #fff;
+font-size: 13px; font-weight: 600; cursor: pointer;
+font-family: ‘DM Sans’, sans-serif; transition: all 0.15s;
+}
+.cat-chip.selected { background: var(–accent); color: #fff; border-color: var(–accent); }
+.privacy-row { display: flex; gap: 7px; margin-bottom: 20px; }
+.priv-btn {
+flex: 1; padding: 9px 4px; border-radius: 12px;
+border: 1.5px solid #e0e0e0; background: #fff;
+font-size: 11px; font-weight: 700; cursor: pointer;
+font-family: ‘DM Sans’, sans-serif; transition: all 0.15s;
+color: #666;
+}
+.priv-btn.selected { background: var(–accent); color: #fff; border-color: var(–accent); }
+.btn-primary {
+width: 100%; padding: 15px;
+border-radius: 14px; border: none;
+background: var(–accent);
+color: #fff; font-size: 15px; font-weight: 600;
+cursor: pointer; font-family: ‘DM Sans’, sans-serif;
+transition: opacity 0.15s;
+}
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary {
+width: 100%; padding: 15px;
+border-radius: 14px; border: 1.5px solid #e0e0e0;
+background: #f7f7f7; color: #555;
+font-size: 15px; font-weight: 600; cursor: pointer;
+font-family: ‘DM Sans’, sans-serif; margin-bottom: 10px;
+}
+
+/* Custom marker styles */
+.spot-marker {
+border-radius: 50% 50% 50% 0;
+transform: rotate(-45deg);
+width: 36px; height: 36px;
+display: flex; align-items: center; justify-content: center;
+box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+border: 2.5px solid white;
+cursor: pointer;
+}
+.spot-marker-inner {
+transform: rotate(45deg);
+font-size: 13px; font-weight: 700;
+color: white;
+}
+
+/* Leaflet overrides */
+.leaflet-container { font-family: ‘DM Sans’, sans-serif !important; }
+.leaflet-control-attribution { display: none !important; }
+.leaflet-control-zoom {
+border: none !important;
+box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+.leaflet-control-zoom a {
+border-radius: 10px !important;
+color: var(–text) !important;
+font-weight: 700 !important;
+}
+</style>
+
+</head>
+<body>
+
+<div id="phone">
+
+  <!-- Status Bar -->
+
+  <div id="statusbar">
+    <span>9:41</span>
+    <div class="notch"></div>
+    <span>⚡ 92%</span>
+  </div>
+
+  <!-- ════════ INTRO SCREEN ════════ -->
+
+  <div id="screen-intro">
+    <!-- Star field -->
+    <canvas id="stars-canvas"></canvas>
+
+```
+<div class="globe-wrap">
+  <div class="atmo-glow"></div>
+  <canvas id="globe-canvas" width="260" height="260"></canvas>
+  <div class="globe-shine"></div>
+</div>
+
+<div class="intro-logo">Unlockd</div>
+<div class="intro-tagline">Discover places through people you trust.</div>
+
+<button id="btn-locate" onclick="startLocating()">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>
+  </svg>
+  Meinen Standort nutzen
+</button>
+```
+
+  </div>
+
+  <!-- ════════ MAP SCREEN ════════ -->
+
+  <div id="screen-map">
+    <!-- Map fills everything -->
+    <div id="map"></div>
+
+```
+<!-- Header overlay -->
+<div id="map-header">
+  <div class="map-logo">Un<span>lock</span>d</div>
+  <button class="avatar-btn" onclick="showFriends()">DU</button>
+</div>
+
+<!-- Filter chips -->
+<div id="filters">
+  <div class="chip active" onclick="filterChip(this,'all')">Alle</div>
+  <div class="chip" onclick="filterChip(this,'cafe')">☕ Café</div>
+  <div class="chip" onclick="filterChip(this,'food')">🥘 Food</div>
+  <div class="chip" onclick="filterChip(this,'bar')">🍺 Bar</div>
+  <div class="chip" onclick="filterChip(this,'view')">🌆 Aussicht</div>
+  <div class="chip" onclick="filterChip(this,'art')">🎨 Kultur</div>
+</div>
+
+<!-- My location button -->
+<button id="btn-myloc" onclick="goToMyLocation()" title="Mein Standort">
+  🎯
+</button>
+
+<!-- FAB -->
+<button id="fab" onclick="openAddSpot()">+</button>
+
+<!-- Bottom nav -->
+<div id="bottomnav">
+  <button class="nav-btn active" id="nav-map" onclick="showMap()">
+    <span class="nav-icon">🗺️</span>
+    <span class="nav-label">Karte</span>
+    <span class="nav-dot"></span>
+  </button>
+  <button class="nav-btn" id="nav-friends" onclick="showFriends()">
+    <span class="nav-icon">👥</span>
+    <span class="nav-label">Netzwerk</span>
+    <span class="nav-dot"></span>
+  </button>
+</div>
+
+<!-- Spot card -->
+<div id="spot-card">
+  <button class="close-card" onclick="closeSpotCard()">✕</button>
+  <img id="sc-photo" src="" alt=""/>
+  <div class="card-body">
+    <div class="card-cat" id="sc-cat"></div>
+    <div class="card-name" id="sc-name"></div>
+    <div class="card-author">
+      <div class="mini-avatar" id="sc-avatar"></div>
+      <div style="font-size:13px;color:#555"><span id="sc-author" style="font-weight:600;color:#1a1a1a"></span> empfiehlt:</div>
+    </div>
+    <div class="card-note" id="sc-note"></div>
+    <div class="card-actions">
+      <button class="like-btn" id="like-btn" onclick="toggleLike()">
+        <span id="like-icon">🤍</span> <span id="like-count">0</span>
+      </button>
+      <span class="privacy-badge" id="sc-privacy"></span>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+
+  <!-- ════════ FRIENDS SCREEN ════════ -->
+
+  <div id="screen-friends">
+    <div class="friends-header">
+      <div class="friends-title">Netzwerk</div>
+      <div class="friends-sub">Entdecke Orte über Menschen, denen du vertraust</div>
+      <input class="search-box" placeholder="🔍 Freund suchen..." oninput="filterFriends(this.value)"/>
+    </div>
+    <div class="friends-list" id="friends-list"></div>
+    <div style="padding: 0 0 80px">
+      <div class="invite-card" onclick="alert('Link kopiert! 🎉')">
+        <div class="invite-icon">🔗</div>
+        <div class="invite-title">Freunde einladen</div>
+        <div class="invite-sub">Teile deinen Link und entdeckt gemeinsam</div>
+      </div>
+    </div>
+    <div id="bottomnav2">
+      <div id="bottomnav" style="display:none"></div>
+    </div>
+    <!-- reuse same bottomnav style -->
+    <div style="position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #f0f0f0;display:flex;padding-bottom:12px;z-index:500">
+      <button class="nav-btn" onclick="showMap()" style="flex:1;background:none;border:none;cursor:pointer;padding:10px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'DM Sans',sans-serif">
+        <span class="nav-icon">🗺️</span>
+        <span class="nav-label" style="font-size:10px;font-weight:600;color:#bbb;letter-spacing:0.4px;text-transform:uppercase">Karte</span>
+      </button>
+      <button class="nav-btn active" onclick="showFriends()" style="flex:1;background:none;border:none;cursor:pointer;padding:10px 0 4px;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:'DM Sans',sans-serif">
+        <span class="nav-icon">👥</span>
+        <span class="nav-label" style="font-size:10px;font-weight:600;color:#2D6A4F;letter-spacing:0.4px;text-transform:uppercase">Netzwerk</span>
+        <span style="width:4px;height:4px;border-radius:50%;background:#2D6A4F;display:block"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════ ADD SPOT MODAL ════════ -->
+
+  <div id="modal-overlay" onclick="overlayClick(event)">
+    <div id="modal-sheet">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">📍 Spot hinzufügen</div>
+          <div class="step-dots" style="margin-top:6px" id="step-dots">
+            <div class="step-dot active"></div>
+            <div class="step-dot"></div>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeAddSpot()">✕</button>
+      </div>
+      <!-- Step 1 -->
+      <div id="step1">
+        <label class="field-label">Name des Ortes</label>
+        <input class="field-input" id="spot-name" placeholder="z.B. Café Leschanz"/>
+        <label class="field-label">Kategorie</label>
+        <div class="cats-grid" id="cats-grid"></div>
+        <button class="btn-primary" onclick="goStep2()">Weiter →</button>
+      </div>
+      <!-- Step 2 -->
+      <div id="step2" style="display:none">
+        <label class="field-label">Deine Empfehlung</label>
+        <textarea class="field-input" id="spot-note" placeholder="Warum liebst du diesen Ort?" style="height:80px;resize:none"></textarea>
+        <label class="field-label">Sichtbarkeit</label>
+        <div class="privacy-row">
+          <button class="priv-btn" onclick="selectPrivacy('private',this)">🔒 Privat</button>
+          <button class="priv-btn selected" onclick="selectPrivacy('friends',this)">👥 Freunde</button>
+          <button class="priv-btn" onclick="selectPrivacy('public',this)">🌍 Öffentlich</button>
+        </div>
+        <button class="btn-secondary" onclick="goStep1()">← Zurück</button>
+        <button class="btn-primary" onclick="saveSpot()">Spot speichern ✓</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════
+const SPOTS = [
+  { id:1, name:"Bohnenviertel Café", cat:"☕ Café", catKey:"cafe",
+    lat:48.773, lng:9.181,
+    photo:"https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500&q=80",
+    note:"Bestes Filterkaffee der Stadt. Geh morgens, bevor es voll wird.",
+    author:"Mia K.", av:"MK", color:"#e17055", privacy:"friends", likes:12 },
+  { id:2, name:"Heslach Rooftop", cat:"🌆 Aussicht", catKey:"view",
+    lat:48.762, lng:9.17,
+    photo:"https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=500&q=80",
+    note:"Kaum einer kennt diesen Spot. Sonnenuntergang ist unglaublich.",
+    author:"Jonas R.", av:"JR", color:"#00b894", privacy:"public", likes:34 },
+  { id:3, name:"Markthalle Stuttgart", cat:"🥘 Food", catKey:"food",
+    lat:48.778, lng:9.179,
+    photo:"https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80",
+    note:"Stand 14 hat die besten Maultaschen. Nicht der touristischste, aber der beste.",
+    author:"Sophie L.", av:"SL", color:"#6c5ce7", privacy:"friends", likes:8 },
+  { id:4, name:"Biergarten Tübinger Str.", cat:"🍺 Bar", catKey:"bar",
+    lat:48.768, lng:9.174,
+    photo:"https://images.unsplash.com/photo-1436076863939-06870fe779c2?w=500&q=80",
+    note:"Versteckter Biergarten. Donnerstagabends fast immer Platz.",
+    author:"Luca D.", av:"LD", color:"#fd79a8", privacy:"public", likes:21 },
+];
+
+const FRIENDS = [
+  { name:"Mia Köhler",   av:"MK", color:"#e17055", spots:8,  mutual:3 },
+  { name:"Jonas Ritter", av:"JR", color:"#00b894", spots:15, mutual:7 },
+  { name:"Sophie Lang",  av:"SL", color:"#6c5ce7", spots:5,  mutual:2 },
+  { name:"Luca Decker",  av:"LD", color:"#fd79a8", spots:22, mutual:10 },
+  { name:"Finn Braun",   av:"FB", color:"#fdcb6e", spots:3,  mutual:1 },
+];
+
+const CATS = ["☕ Café","🥘 Food","🍺 Bar","🌆 Aussicht","🎨 Kultur","🏃 Sport"];
+const CAT_KEYS = {  "☕ Café":"cafe","🥘 Food":"food","🍺 Bar":"bar","🌆 Aussicht":"view","🎨 Kultur":"art","🏃 Sport":"sport" };
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let map, markers = [], userMarker, spots = [...SPOTS];
+let selectedPrivacy = "friends", selectedCat = "", currentSpotId = null, isLiked = false;
+let userLat = null, userLng = null;
+
+// ═══════════════════════════════════════
+// INTRO → MAP
+// ═══════════════════════════════════════
+function startLocating() {
+  const btn = document.getElementById('btn-locate');
+  btn.innerHTML = `<span class="locating-dots"><span>•</span><span>•</span><span>•</span></span>`;
+  btn.style.background = 'rgba(82,183,136,0.4)';
+  btn.disabled = true;
+
+  // Try real geolocation, fallback to Stuttgart
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => launchMap(pos.coords.latitude, pos.coords.longitude, 15),
+      ()  => launchMap(48.775, 9.178, 14), // Stuttgart fallback
+      { timeout: 5000 }
+    );
+  } else {
+    setTimeout(() => launchMap(48.775, 9.178, 14), 1200);
+  }
+}
+
+function launchMap(lat, lng, zoom) {
+  userLat = lat; userLng = lng;
+
+  // Show map screen
+  document.getElementById('screen-intro').classList.add('hidden');
+  const mapScreen = document.getElementById('screen-map');
+  mapScreen.classList.add('visible');
+
+  // Init Leaflet map
+  map = L.map('map', {
+    center: [48.0, 10.0], // start wide
+    zoom: 5,
+    zoomControl: true,
+    zoomAnimation: true,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(map);
+
+  // Animate zoom to user location
+  setTimeout(() => {
+    map.flyTo([lat, lng], zoom, { duration: 2.2, easeLinearity: 0.15 });
+  }, 300);
+
+  // Add user location marker
+  setTimeout(() => {
+    addUserMarker(lat, lng);
+    renderSpots();
+  }, 2600);
+}
+
+function addUserMarker(lat, lng) {
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:#2D6A4F;border:3px solid white;box-shadow:0 2px 10px rgba(45,106,79,0.6)">
+             <div style="width:40px;height:40px;border-radius:50%;background:rgba(45,106,79,0.15);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:ripple 2s infinite"></div>
+           </div>
+           <style>@keyframes ripple{0%{transform:translate(-50%,-50%) scale(1);opacity:0.8}100%{transform:translate(-50%,-50%) scale(2.5);opacity:0}}</style>`,
+
+```
+iconSize: [18,18],
+iconAnchor: [9,9],
+```
+
+});
+userMarker = L.marker([lat, lng], { icon }).addTo(map);
+}
+
+// ═══════════════════════════════════════
+// SPOTS
+// ═══════════════════════════════════════
+function renderSpots(filter = ‘all’) {
+markers.forEach(m => map.removeLayer(m));
+markers = [];
+
+spots.filter(s => filter === ‘all’ || s.catKey === filter).forEach(spot => {
+const icon = L.divIcon({
+className: ‘’,
+html: `<div style=" background:${spot.color}; border-radius:50% 50% 50% 0; transform:rotate(-45deg); width:38px;height:38px; display:flex;align-items:center;justify-content:center; box-shadow:0 4px 14px rgba(0,0,0,0.28); border:2.5px solid white; cursor:pointer; "><span style="transform:rotate(45deg);font-size:12px;font-weight:700;color:white">${spot.av[0]}</span></div>`,
+iconSize: [38,38],
+iconAnchor: [19,38],
+});
+const m = L.marker([spot.lat, spot.lng], { icon }).addTo(map);
+m.on(‘click’, () => openSpotCard(spot.id));
+markers.push(m);
+});
+}
+
+function openSpotCard(id) {
+const s = spots.find(x => x.id === id);
+if (!s) return;
+currentSpotId = id;
+isLiked = false;
+
+document.getElementById(‘sc-photo’).src = s.photo;
+document.getElementById(‘sc-cat’).textContent = s.cat;
+document.getElementById(‘sc-name’).textContent = s.name;
+document.getElementById(‘sc-avatar’).textContent = s.av;
+document.getElementById(‘sc-avatar’).style.background = s.color;
+document.getElementById(‘sc-author’).textContent = s.author;
+document.getElementById(‘sc-note’).textContent = `„${s.note}"`;
+document.getElementById(‘like-count’).textContent = s.likes;
+document.getElementById(‘like-icon’).textContent = ‘🤍’;
+document.getElementById(‘like-btn’).classList.remove(‘liked’);
+
+const pb = document.getElementById(‘sc-privacy’);
+if (s.privacy === ‘public’) {
+pb.textContent = ‘🌍 Öffentlich’;
+pb.style.cssText = ‘background:#e8f5e9;color:#388e3c;font-size:11px;padding:4px 10px;border-radius:20px;font-weight:600’;
+} else {
+pb.textContent = ‘👥 Freunde’;
+pb.style.cssText = ‘background:#fff3e0;color:#e65100;font-size:11px;padding:4px 10px;border-radius:20px;font-weight:600’;
+}
+
+document.getElementById(‘spot-card’).classList.add(‘open’);
+map.panTo([s.lat, s.lng]);
+}
+
+function closeSpotCard() {
+document.getElementById(‘spot-card’).classList.remove(‘open’);
+currentSpotId = null;
+}
+
+function toggleLike() {
+if (!currentSpotId) return;
+isLiked = !isLiked;
+const s = spots.find(x => x.id === currentSpotId);
+document.getElementById(‘like-icon’).textContent = isLiked ? ‘❤️’ : ‘🤍’;
+document.getElementById(‘like-count’).textContent = s.likes + (isLiked ? 1 : 0);
+const btn = document.getElementById(‘like-btn’);
+isLiked ? btn.classList.add(‘liked’) : btn.classList.remove(‘liked’);
+}
+
+// ═══════════════════════════════════════
+// FILTERS
+// ═══════════════════════════════════════
+function filterChip(el, key) {
+document.querySelectorAll(’#filters .chip’).forEach(c => c.classList.remove(‘active’));
+el.classList.add(‘active’);
+renderSpots(key);
+}
+
+// ═══════════════════════════════════════
+// MY LOCATION
+// ═══════════════════════════════════════
+function goToMyLocation() {
+if (userLat && userLng) {
+map.flyTo([userLat, userLng], 15, { duration: 1.2 });
+}
+}
+
+// ═══════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════
+function showMap() {
+document.getElementById(‘screen-map’).style.display = ‘’;
+document.getElementById(‘screen-friends’).classList.remove(‘visible’);
+document.getElementById(‘nav-map’).classList.add(‘active’);
+document.getElementById(‘nav-friends’).classList.remove(‘active’);
+}
+
+function showFriends() {
+document.getElementById(‘screen-friends’).classList.add(‘visible’);
+document.getElementById(‘nav-map’).classList.remove(‘active’);
+document.getElementById(‘nav-friends’).classList.add(‘active’);
+renderFriends(’’);
+}
+
+// ═══════════════════════════════════════
+// FRIENDS
+// ═══════════════════════════════════════
+function renderFriends(query) {
+const list = document.getElementById(‘friends-list’);
+const filtered = FRIENDS.filter(f => f.name.toLowerCase().includes(query.toLowerCase()));
+list.innerHTML = filtered.map(f => `<div class="friend-row"> <div class="friend-avatar" style="background:${f.color}">${f.av}</div> <div class="friend-info"> <div class="friend-name">${f.name}</div> <div class="friend-meta">📍 ${f.spots} Spots · 👥 ${f.mutual} gemeinsam</div> </div> <button class="friend-action">Karte</button> </div>`).join(’’);
+}
+
+function filterFriends(q) { renderFriends(q); }
+
+// ═══════════════════════════════════════
+// ADD SPOT MODAL
+// ═══════════════════════════════════════
+function openAddSpot() {
+// Build cat chips
+const grid = document.getElementById(‘cats-grid’);
+grid.innerHTML = CATS.map(c => `<div class="cat-chip" onclick="selectCat('${c}',this)">${c}</div>`).join(’’);
+selectedCat = ‘’;
+selectedPrivacy = ‘friends’;
+document.getElementById(‘spot-name’).value = ‘’;
+document.getElementById(‘spot-note’).value = ‘’;
+goStep1();
+document.getElementById(‘modal-overlay’).classList.add(‘open’);
+}
+
+function closeAddSpot() {
+document.getElementById(‘modal-overlay’).classList.remove(‘open’);
+}
+
+function overlayClick(e) {
+if (e.target === document.getElementById(‘modal-overlay’)) closeAddSpot();
+}
+
+function selectCat(cat, el) {
+document.querySelectorAll(’.cat-chip’).forEach(c => c.classList.remove(‘selected’));
+el.classList.add(‘selected’);
+selectedCat = cat;
+}
+
+function selectPrivacy(val, el) {
+document.querySelectorAll(’.priv-btn’).forEach(b => b.classList.remove(‘selected’));
+el.classList.add(‘selected’);
+selectedPrivacy = val;
+}
+
+function goStep1() {
+document.getElementById(‘step1’).style.display = ‘’;
+document.getElementById(‘step2’).style.display = ‘none’;
+const dots = document.querySelectorAll(’.step-dot’);
+dots[0].classList.add(‘active’); dots[1].classList.remove(‘active’);
+}
+
+function goStep2() {
+const name = document.getElementById(‘spot-name’).value.trim();
+if (!name || !selectedCat) { alert(‘Bitte Name und Kategorie angeben!’); return; }
+document.getElementById(‘step1’).style.display = ‘none’;
+document.getElementById(‘step2’).style.display = ‘’;
+const dots = document.querySelectorAll(’.step-dot’);
+dots[0].classList.remove(‘active’); dots[1].classList.add(‘active’);
+}
+
+function saveSpot() {
+const name = document.getElementById(‘spot-name’).value.trim();
+const note = document.getElementById(‘spot-note’).value.trim() || ‘Mein neuer Lieblings-Spot!’;
+const catKey = CAT_KEYS[selectedCat] || ‘other’;
+
+const newSpot = {
+id: Date.now(),
+name, cat: selectedCat, catKey,
+lat: (userLat || 48.775) + (Math.random() - 0.5) * 0.015,
+lng: (userLng || 9.178) + (Math.random() - 0.5) * 0.015,
+photo: “https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&q=80”,
+note, author:“Du”, av:“DU”, color:”#2D6A4F”,
+privacy: selectedPrivacy, likes: 0,
+};
+
+spots.push(newSpot);
+closeAddSpot();
+renderSpots(‘all’);
+document.querySelectorAll(’#filters .chip’).forEach(c => c.classList.remove(‘active’));
+document.querySelector(’#filters .chip’).classList.add(‘active’);
+
+setTimeout(() => openSpotCard(newSpot.id), 400);
+}
+</script>
+
+<!-- ═══════════════════════════════════════
+     REALISTIC EARTH GLOBE (Canvas 2D)
+     No external dependencies needed
+════════════════════════════════════════ -->
+
+<script>
+(function() {
+  // ── Star field ──────────────────────────
+  const starCanvas = document.getElementById('stars-canvas');
+  function resizeStars() {
+    const phone = document.getElementById('phone');
+    starCanvas.width  = phone.offsetWidth;
+    starCanvas.height = phone.offsetHeight;
+    drawStars();
+  }
+  function drawStars() {
+    const ctx = starCanvas.getContext('2d');
+    const W = starCanvas.width, H = starCanvas.height;
+    ctx.clearRect(0,0,W,H);
+    const rng = mulberry32(42);
+    for (let i = 0; i < 220; i++) {
+      const x = rng() * W;
+      const y = rng() * H;
+      const r = rng() * 1.2 + 0.2;
+      const a = rng() * 0.7 + 0.3;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      ctx.fill();
+    }
+  }
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  resizeStars();
+
+  // ── Globe rendering ──────────────────────
+  const gc = document.getElementById('globe-canvas');
+  const ctx = gc.getContext('2d');
+  const W = 260, H = 260, R = 118, cx = 130, cy = 130;
+  let angle = 0;
+
+  // Continent data: array of polygons in [lon, lat] degrees
+  // Accurate simplified continent outlines
+  const continents = [
+    // North America
+    { color: '#4a7c59', pts: [
+      [-168,72],[-140,70],[-95,75],[-78,73],[-62,78],[-65,84],[-90,83],[-120,80],[-142,75],[-155,72],[-168,72]
+    ]},
+    { color: '#4a7c59', pts: [
+      [-140,70],[-120,60],[-90,50],[-75,45],[-65,44],[-55,47],[-53,55],[-65,60],[-78,65],[-95,70],[-120,70],[-140,70]
+    ]},
+    { color: '#5a8f6a', pts: [
+      [-120,50],[-95,50],[-78,43],[-70,43],[-65,42],[-70,37],[-80,28],[-87,20],[-80,15],[-75,10],[-78,5],[-75,0],[-80,-5],[-80,-10],[-75,-15],[-70,-20],[-65,-30],[-68,-40],[-65,-50],[-62,-55],[-68,-55],[-75,-45],[-80,-35],[-80,-25],[-80,-15],[-88,-5],[-83,3],[-80,8],[-72,12],[-65,18],[-85,22],[-90,28],[-103,30],[-110,28],[-118,32],[-120,35],[-122,40],[-125,48],[-120,50]
+    ]},
+    // South America
+    { color: '#5a8f6a', pts: [
+      [-75,12],[-60,15],[-50,5],[-35,-5],[-35,-15],[-40,-20],[-45,-25],[-50,-30],[-52,-35],[-55,-40],[-65,-55],[-68,-55],[-65,-50],[-62,-40],[-60,-30],[-60,-25],[-58,-18],[-60,-10],[-68,-5],[-78,2],[-78,8],[-75,12]
+    ]},
+    // Europe
+    { color: '#4a7a5e', pts: [
+      [-10,36],[0,38],[10,44],[20,48],[30,48],[38,48],[36,55],[30,60],[25,65],[18,70],[10,70],[0,65],[-5,60],[-10,55],[-10,48],[-10,42],[-10,36]
+    ]},
+    // Scandinavia
+    { color: '#4a7a5e', pts: [
+      [5,58],[10,57],[15,58],[18,62],[25,68],[28,72],[22,72],[18,70],[14,65],[10,62],[8,60],[5,58]
+    ]},
+    // Africa
+    { color: '#5d8c55', pts: [
+      [-18,15],[-10,20],[0,22],[15,22],[30,22],[38,20],[42,12],[48,10],[42,5],[38,-2],[36,-8],[36,-18],[32,-28],[28,-35],[22,-40],[18,-35],[15,-28],[12,-20],[8,-10],[2,-5],[0,0],[-2,5],[-8,12],[-18,15]
+    ]},
+    // Asia (main body)
+    { color: '#4d7d5c', pts: [
+      [28,72],[38,70],[55,72],[70,72],[90,70],[110,72],[130,70],[140,65],[145,58],[135,48],[128,38],[120,30],[110,22],[100,14],[90,10],[80,18],[70,22],[60,22],[50,28],[40,38],[38,45],[30,50],[25,55],[25,65],[28,72]
+    ]},
+    // Arabian Peninsula
+    { color: '#4d7d5c', pts: [
+      [38,28],[50,28],[60,22],[58,14],[55,10],[48,12],[42,12],[38,18],[38,28]
+    ]},
+    // Indian Subcontinent
+    { color: '#4d7d5c', pts: [
+      [68,22],[78,22],[82,18],[80,12],[78,8],[72,8],[68,12],[65,18],[68,22]
+    ]},
+    // Southeast Asia
+    { color: '#4d7d5c', pts: [
+      [100,22],[105,18],[108,12],[105,8],[100,10],[95,12],[95,18],[100,22]
+    ]},
+    // Australia
+    { color: '#5a8060', pts: [
+      [114,-22],[120,-20],[128,-18],[135,-18],[140,-20],[145,-25],[148,-35],[145,-40],[138,-38],[130,-32],[125,-28],[118,-25],[114,-22]
+    ]},
+    // Greenland
+    { color: '#6a9080', pts: [
+      [-55,60],[-42,62],[-25,68],[-18,75],[-20,82],[-35,84],[-50,82],[-62,78],[-65,72],[-55,66],[-55,60]
+    ]},
+    // Japan
+    { color: '#4d7d5c', pts: [
+      [130,32],[132,34],[136,36],[140,40],[142,44],[140,44],[136,40],[132,36],[128,34],[130,32]
+    ]},
+    // UK/Ireland rough
+    { color: '#4a7a5e', pts: [
+      [-6,50],[-2,50],[2,52],[0,56],[-4,58],[-6,54],[-6,50]
+    ]},
+  ];
+
+  function latLonToXY(lat, lon, tilt, rotAngle) {
+    const phi   = (90 - lat) * Math.PI / 180;
+    const theta = (lon + rotAngle) * Math.PI / 180;
+    // 3D coords on unit sphere
+    let x = Math.sin(phi) * Math.cos(theta);
+    let y = Math.cos(phi);
+    let z = Math.sin(phi) * Math.sin(theta);
+    // Apply tilt (rotation around X axis)
+    const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+    const y2 = y * cosT - z * sinT;
+    const z2 = y * sinT + z * cosT;
+    return { x, y: y2, z: z2 };
+  }
+
+  function drawGlobe(rot) {
+    ctx.clearRect(0, 0, W, H);
+    const tilt = 23.5 * Math.PI / 180; // Earth's axial tilt
+
+    // ── Ocean base ──────────────────────────
+    const oceanGrad = ctx.createRadialGradient(cx-30, cy-30, 5, cx, cy, R);
+    oceanGrad.addColorStop(0,   '#1a6699');
+    oceanGrad.addColorStop(0.3, '#0d4d80');
+    oceanGrad.addColorStop(0.7, '#083d6b');
+    oceanGrad.addColorStop(1,   '#041e42');
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.fillStyle = oceanGrad;
+    ctx.fill();
+
+    // ── Draw continents ───────────────────
+    continents.forEach(cont => {
+      const projected = cont.pts.map(([lon, lat]) => {
+        const p = latLonToXY(lat, lon, tilt, rot * 180 / Math.PI);
+        return { ...p, screenX: cx + p.x * R, screenY: cy - p.y * R };
+      });
+
+      // Check if mostly visible (z > 0 = front hemisphere)
+      const avgZ = projected.reduce((s,p) => s + p.z, 0) / projected.length;
+      if (avgZ < -0.2) return;
+
+      ctx.beginPath();
+      let first = true;
+      projected.forEach(p => {
+        if (first) { ctx.moveTo(p.screenX, p.screenY); first = false; }
+        else ctx.lineTo(p.screenX, p.screenY);
+      });
+      ctx.closePath();
+
+      // Clip to circle
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.clip();
+
+      // Shade based on z-depth (lighting from upper-left)
+      const lit = Math.max(0, Math.min(1, avgZ * 1.2 + 0.15));
+      const baseH = cont.color;
+      ctx.globalAlpha = 0.55 + lit * 0.45;
+      ctx.fillStyle = cont.color;
+      ctx.fill();
+
+      // Subtle land highlight edge
+      ctx.globalAlpha = 0.12;
+      ctx.strokeStyle = '#90c878';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      ctx.restore();
+    });
+
+    // ── Ice caps ──────────────────────────
+    // North pole
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.clip();
+    const npPts = [];
+    for (let lon = 0; lon <= 360; lon += 10) {
+      const p = latLonToXY(75, lon, tilt, rot * 180/Math.PI);
+      npPts.push({ screenX: cx + p.x*R, screenY: cy - p.y*R, z: p.z });
+    }
+    ctx.beginPath();
+    let first = true;
+    npPts.forEach(p => {
+      if (first) { ctx.moveTo(p.screenX, p.screenY); first=false; }
+      else ctx.lineTo(p.screenX, p.screenY);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(220,235,255,0.65)';
+    ctx.fill();
+    ctx.restore();
+
+    // South pole
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.clip();
+    const spPts = [];
+    for (let lon = 0; lon <= 360; lon += 10) {
+      const p = latLonToXY(-65, lon, tilt, rot * 180/Math.PI);
+      spPts.push({ screenX: cx + p.x*R, screenY: cy - p.y*R, z: p.z });
+    }
+    ctx.beginPath();
+    first = true;
+    spPts.forEach(p => {
+      if (first) { ctx.moveTo(p.screenX, p.screenY); first=false; }
+      else ctx.lineTo(p.screenX, p.screenY);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(220,235,255,0.55)';
+    ctx.fill();
+    ctx.restore();
+
+    // ── Lighting: dark side shadow ─────────
+    const shadowGrad = ctx.createRadialGradient(cx+40, cy+20, R*0.1, cx+60, cy+40, R*1.1);
+    shadowGrad.addColorStop(0,   'rgba(0,0,0,0)');
+    shadowGrad.addColorStop(0.4, 'rgba(0,0,0,0)');
+    shadowGrad.addColorStop(0.75,'rgba(0,5,20,0.35)');
+    shadowGrad.addColorStop(1,   'rgba(0,5,20,0.75)');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.clip();
+    ctx.fillStyle = shadowGrad;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // ── Specular highlight (sunlight glint) ─
+    const specGrad = ctx.createRadialGradient(cx-38, cy-38, 2, cx-28, cy-28, R*0.7);
+    specGrad.addColorStop(0,   'rgba(255,255,255,0.22)');
+    specGrad.addColorStop(0.25,'rgba(255,255,255,0.08)');
+    specGrad.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.clip();
+    ctx.fillStyle = specGrad;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // ── Thin edge atmosphere rim ───────────
+    const rimGrad = ctx.createRadialGradient(cx, cy, R-4, cx, cy, R+3);
+    rimGrad.addColorStop(0,   'rgba(100,180,255,0)');
+    rimGrad.addColorStop(0.5, 'rgba(100,180,255,0.18)');
+    rimGrad.addColorStop(1,   'rgba(100,180,255,0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, R+1, 0, Math.PI*2);
+    ctx.strokeStyle = rimGrad;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+  }
+
+  function animate() {
+    angle += 0.003;
+    drawGlobe(angle);
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+</script>
+
+</body>
+</html>
